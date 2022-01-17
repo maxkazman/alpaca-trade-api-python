@@ -739,6 +739,23 @@ class REST(object):
                 yield quote
             else:
                 yield self.response_wrapper(quote, Quote)
+                
+    def get_quotes_iter_page(self,
+                        symbol: Union[str, List[str]],
+                        start: Optional[str] = None,
+                        end: Optional[str] = None,
+                        limit: int = None,
+                        raw=False,
+                        page_token=None):
+        quotes, page_token = self._data_get_page('quotes', symbol,
+                                start=start, end=end, limit=limit, page_token=page_token)
+        quotes_list = []
+        for quote in quotes:
+            if raw:
+                quotes_list.append(quote)
+            else:
+                quotes_list.append(self.response_wrapper(quote, Quote))
+        return quotes_list, page_token
 
     def get_quotes(self,
                    symbol: Union[str, List[str]],
@@ -752,6 +769,20 @@ class REST(object):
                                            limit,
                                            raw=True))
         return QuotesV2(quotes)
+    
+    def get_quotes_page(self,
+                   symbol: Union[str, List[str]],
+                   start: Optional[str] = None,
+                   end: Optional[str] = None,
+                   limit: int = None,
+                   page_token = None):
+        quotes, page_token = self.get_quotes_iter_page(symbol,
+                                           start,
+                                           end,
+                                           limit,
+                                           raw=True,
+                                           page_token=page_token)
+        return QuotesV2(quotes), page_token
 
     def get_bars_iter(self,
                       symbol: Union[str, List[str]],
