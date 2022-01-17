@@ -634,6 +634,46 @@ class REST(object):
             if not page_token:
                 break
 
+    def _data_get_page(self,
+                  endpoint: str,
+                  symbol_or_symbols: Union[str, List[str]],
+                  api_version: str = 'v2',
+                  endpoint_base: str = 'stocks',
+                  **kwargs):
+        page_token = kwargs.get('page_token')
+        total_items = 0
+        limit = kwargs.get('limit')
+        items_list = []
+        while True:
+            actual_limit = None
+            if limit:
+                actual_limit = min(int(limit) - total_items, DATA_V2_MAX_LIMIT)
+                if actual_limit < 1:
+                    break
+            data = kwargs
+            data['limit'] = actual_limit
+            data['page_token'] = page_token
+            if isinstance(symbol_or_symbols, str):
+                path = f'/{endpoint_base}/{symbol_or_symbols}/{endpoint}'
+            else:
+                path = f'/{endpoint_base}/{endpoint}'
+                data['symbols'] = ','.join(symbol_or_symbols)
+            resp = self.data_get(path, data=data, api_version=api_version)
+            if isinstance(symbol_or_symbols, str):
+                for item in resp.get(endpoint, []) or []:
+                    items_list.append(item)
+                    total_items += 1
+            else:
+                by_symbol = resp.get(endpoint, {}) or {}
+                for sym, items in sorted(by_symbol.items()):
+                    for item in items or []:
+                        item['S'] = sym
+                        items_list.append(item)
+                        total_items += 1
+            break
+        page_token = resp.get('next_page_token')
+        return items_list, page_token
+                
     def get_trades_iter(self,
                         symbol: Union[str, List[str]],
                         start: Optional[str] = None,
@@ -647,6 +687,23 @@ class REST(object):
                 yield trade
             else:
                 yield self.response_wrapper(trade, Trade)
+                
+    def get_trades_iter_page(self,
+                        symbol: Union[str, List[str]],
+                        start: Optional[str] = None,
+                        end: Optional[str] = None,
+                        limit: int = None,
+                        raw=False,
+                        page_token = None):
+        trades, page_token = self._data_get_page('trades', symbol,
+                                start=start, end=end, limit=limit, page_token=page_token)
+        trades_list = []
+        for trade in trades:
+            if raw:
+                trades_list.append(trade)
+            else:
+                trades_list.append(self.response_wrapper(trade, Trade))
+        return trades_list, page_token
 
     def get_trades(self,
                    symbol: Union[str, List[str]],
@@ -658,6 +715,17 @@ class REST(object):
                                            start, end, limit, raw=True))
         return TradesV2(trades)
 
+    def get_trades_page(self,
+                   symbol: Union[str, List[str]],
+                   start: Optional[str] = None,
+                   end: Optional[str] = None,
+                   limit: int = None,
+                   page_token = None,
+                   ):
+        trades, page_token = self.get_trades_iter_page(symbol,
+                                           start, end, limit, raw=True, page_token=page_token)
+        return TradesV2(trades), page_token
+    
     def get_quotes_iter(self,
                         symbol: Union[str, List[str]],
                         start: Optional[str] = None,
